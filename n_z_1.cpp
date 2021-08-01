@@ -166,7 +166,7 @@ return_mem readFiles(mem_block_t* block, mem_file_img_t* file, mem_block_t* bloc
 
             ReadFile(curr_file, curr_block_buf, size_read, read_symbols, NULL); // Считываем данные в блок памяти
 
-            curr_block_buf += size_read; // Смещаем указатель на заполнемый бит буфера
+            curr_block_buf += size_read; // Смещаем указатель на заполняемый бит буфера
             curr_block_size -= size_read; // Уменьшаем количество свободного места в блоке памяти
             curr_file_size.QuadPart -= size_read; // Уменьшаем размер полезных данных в файле
 
