@@ -23,27 +23,46 @@ struct return_mem {
     mem_block_t* block_full;
 };
 
-// Копирование блока файла
-mem_file_img_t* copy_mem_file_img_t(mem_file_img_t* file) {
-    mem_file_img_t* new_file = new mem_file_img_t;
-    strcpy_s(new_file->path, file->path);
-    new_file->next_mfi = NULL;
+// Очистка памяти
+void delete_mem(mem_block_t* block, mem_file_img_t* file, mem_block_t* block_full, mem_file_img_t* file_loaded) {
 
-    return new_file;
-}
-
-// Копирование блока памяти
-mem_block_t* copy_mem_block_t(mem_block_t* block) {
-    mem_block_t* new_block = (mem_block_t*)(new uint8_t[block->mb_size + sizeof(mem_block_t*) + sizeof(size_t)]); // Выделяем необходимое количество памяти
-    new_block->mb_size = block->mb_size;
-    
-    for (size_t index = 0; index < block->mb_size; index++) {
-        new_block->buf[index] = block->buf[index];
+    mem_file_img_t* curr_file = file_loaded;
+    mem_file_img_t* next_file = NULL; // Указатель на следующий блок, чтобы не потерять при очистке
+    while (curr_file != NULL) {
+        next_file = curr_file->next_mfi;
+        cout << "Чистим память из под файла " << curr_file->path << endl;
+        delete curr_file;
+        curr_file = next_file;
     }
 
-    new_block->next_mb = NULL;
+    curr_file = file;
+    next_file = NULL; // Указатель на следующий блок, чтобы не потерять при очистке
+    while (curr_file != NULL) {
+        next_file = curr_file->next_mfi;
+        cout << "Чистим память из под файла " << curr_file->path << endl;
+        delete curr_file;
+        curr_file = next_file;
+    }
 
-    return new_block;
+    unsigned int index = 1;
+
+    mem_block_t* curr_block = block_full;
+    mem_block_t* next_block = NULL; // Указатель на следующий блок, чтобы не потерять при очистке
+    while (curr_block != NULL) {
+        next_block = curr_block->next_mb;
+        cout << "Чистим память из под блока № " << index++ << endl;
+        delete curr_block;
+        curr_block = next_block;
+    }
+
+    curr_block = block;
+    next_block = NULL; // Указатель на следующий блок, чтобы не потерять при очистке
+    while (curr_block != NULL) {
+        next_block = curr_block->next_mb;
+        cout << "Чистим память из под блока № " << index++ << endl;
+        delete curr_block;
+        curr_block = next_block;
+    }
 }
 
 // Добавление блока памяти в хвост списка
@@ -123,6 +142,24 @@ void print_mem_file_img_t(mem_file_img_t* list) {
     }
 }
 
+// Разделяем списки блоков и файлов
+void splitting_mem(mem_block_t* block, mem_file_img_t* file, mem_block_t* block_full, mem_file_img_t* file_loaded) {
+    mem_block_t* block_temp = block_full; // Временный указатель для перемещения по списку
+
+    while (block_temp->next_mb != block) { // Пока не встретим список из незаполненных блоков
+        block_temp = block_temp->next_mb;
+    }
+    block_temp->next_mb = NULL; // Разделяем списки
+
+    // Аналогично для файлов
+    mem_file_img_t* file_temp = file_loaded;
+
+    while (file_temp->next_mfi != file) {
+        file_temp = file_temp->next_mfi;
+    }
+    file_temp->next_mfi = NULL;
+}
+
 // Заполняем блоки памяти данными из файлов
 return_mem readFiles(mem_block_t* block, mem_file_img_t* file, mem_block_t* block_full, mem_file_img_t* file_loaded) {
     
@@ -158,6 +195,9 @@ return_mem readFiles(mem_block_t* block, mem_file_img_t* file, mem_block_t* bloc
         }
 
         if (!file) {
+
+            splitting_mem(block, file, block_full, file_loaded);
+
             return return_mem{ file, file_loaded, block, block_full };
         }
 
@@ -173,15 +213,7 @@ return_mem readFiles(mem_block_t* block, mem_file_img_t* file, mem_block_t* bloc
             if (curr_file_size.QuadPart == 0) { // Если файл считался полностью
 
                 if (!file_loaded) { // Если списка загруженных файлов нет
-                    file_loaded = copy_mem_file_img_t(file);
-                }
-                else {
-                    mem_file_img_t* temp = file_loaded; // Временный указатель для перемещения по списку
-
-                    while (temp->next_mfi) { // Пока не встречаем конец
-                        temp = temp->next_mfi; // Перемещаемся по списку
-                    }
-                    temp->next_mfi = copy_mem_file_img_t(file);
+                    file_loaded = file; // Пусть он указывает на начало списка
                 }
 
                 UnlockFile(curr_file, 0, 0, curr_file_size.LowPart, curr_file_size.HighPart); // Снимаем блокировку с файла
@@ -190,6 +222,9 @@ return_mem readFiles(mem_block_t* block, mem_file_img_t* file, mem_block_t* bloc
                 file = file->next_mfi; // Переходим к следующему файлу
 
                 if (!file) { // Если файлы закончились
+
+                    splitting_mem(block, file, block_full, file_loaded);
+
                     return return_mem{ file, file_loaded, block, block_full }; // Выходим из функции
                 }
 
@@ -197,21 +232,16 @@ return_mem readFiles(mem_block_t* block, mem_file_img_t* file, mem_block_t* bloc
             }
 
             if (curr_block_size == 0) { // Если блок памяти заполнен
-                if (!block_full) { // Если заполненного блока нет
-                    block_full = copy_mem_block_t(block);
-                }
-                else {
-                    mem_block_t* temp = block_full; // Временный указатель для перемещения по списку
-
-                    while (temp->next_mb) { // Пока не встречаем конец
-                        temp = temp->next_mb; // Перемещаемся по списку
-                    }
-                    temp->next_mb = copy_mem_block_t(block);
+                if (!block_full) { // Если списка заполненных блоков нет
+                    block_full = block; // Пусть он указывает на начало списка
                 }
 
                 block = block->next_mb; // Перемещаемся к следующему блоку
 
                 if (!block) { // Если блоки памяти закончились
+
+                    splitting_mem(block, file, block_full, file_loaded);
+
                     return return_mem{ file, file_loaded, block, block_full }; // Выходим из функции
                 }
 
@@ -271,11 +301,11 @@ int main()
     mem_file_img_t* mem_file_img_t_loaded = NULL; // Объявляем список файлов для хранения загруженных
 
     HANDLE h_file_struct = FindFirstFileA("*.txt", &file_struct); // Поиск файла
-    
+
     cout << endl;
     if (h_file_struct != INVALID_HANDLE_VALUE) { // Если файл найден
         do {
-            if((file_struct.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0){ // Если это не дирректория
+            if ((file_struct.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) { // Если это не дирректория
                 mem_file_img_t_not_loaded = add_file_img_t(mem_file_img_t_not_loaded, (char*)file_struct.cFileName); // Заполняем список файлов
                 cout << "Добавлен файл " << file_struct.cFileName << endl;
             }
@@ -301,6 +331,9 @@ int main()
 
     cout << "\nНе загруженные файлы:" << endl;
     print_mem_file_img_t(mem_file_img_t_not_loaded);
+
+    cout << endl;
+    delete_mem(mem_block_t_clear, mem_file_img_t_not_loaded, mem_block_t_full, mem_file_img_t_loaded);
 
     cout << "\nPress any button to the end...";
     cin.clear();
